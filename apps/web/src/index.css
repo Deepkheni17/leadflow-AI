@@ -1,0 +1,119 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Instrument Serif", ui-serif, Georgia, serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --color-paper: #f3efe6;
+  --color-paper-2: #eae4d7;
+  --color-card: #fbf9f4;
+  --color-ink: #16150f;
+  --color-ink-2: #22211b;
+  --color-ink-3: #3a382f;
+  --color-muted: #6f6a5c;
+  --color-faint: #a39e8f;
+  --color-line: #ddd6c7;
+  --color-line-dark: #34322a;
+  --color-amber: #f2a541;
+  --color-amber-deep: #c47414;
+  --color-amber-soft: #f8e3c2;
+  --color-cobalt: #2f4fe0;
+  --color-cobalt-soft: #dce2fb;
+  --color-sky: #9aaaf2;
+  --color-sand: #e7d9bd;
+
+  --animate-marquee: marquee 38s linear infinite;
+  --animate-pulse-dot: pulse-dot 2s ease-in-out infinite;
+
+  @keyframes marquee {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+  @keyframes pulse-dot {
+    0%, 100% { box-shadow: 0 0 0 0 rgb(242 165 65 / 0.55); }
+    50% { box-shadow: 0 0 0 6px rgb(242 165 65 / 0); }
+  }
+}
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+  }
+  html,
+  body {
+    /* Clip (not hide) so off-screen entrance transforms never cause sideways scroll,
+       while position: sticky keeps working. */
+    overflow-x: clip;
+  }
+  body {
+    @apply bg-paper text-ink font-sans;
+    font-feature-settings: "ss01", "cv11";
+  }
+  ::selection {
+    background: var(--color-amber);
+    color: var(--color-ink);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-cobalt);
+    outline-offset: 2px;
+  }
+}
+
+@utility grain {
+  position: relative;
+  isolation: isolate;
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    opacity: 0.35;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.09 0 0 0 0 0.08 0 0 0 0 0.06 0 0 0 .09 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  }
+}
+@utility grid-lines {
+    background-image:
+      linear-gradient(to right, rgb(22 21 15 / 0.05) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(22 21 15 / 0.05) 1px, transparent 1px);
+    background-size: 56px 56px;
+}
+@utility card {
+    @apply bg-card border border-line rounded-2xl;
+}
+@utility btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-5 h-11 text-sm font-medium transition-all duration-200 select-none disabled:opacity-50 disabled:pointer-events-none;
+}
+@utility btn-ink {
+    @apply btn bg-ink text-paper hover:bg-ink-3 active:scale-[.98];
+}
+@utility btn-amber {
+    @apply btn bg-amber text-ink hover:bg-[#f5b560] active:scale-[.98];
+}
+@utility btn-ghost {
+    @apply btn border border-line bg-card/60 text-ink hover:border-ink/40 hover:bg-card;
+}
+@utility eyebrow {
+    @apply font-mono text-[11px] uppercase tracking-[0.18em] text-muted;
+}
+@utility input {
+    @apply w-full rounded-xl border border-line bg-card px-4 h-12 text-[15px] text-ink placeholder:text-faint outline-none transition focus:border-ink/50 focus:ring-4 focus:ring-amber/25;
+}
+@utility scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line) transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

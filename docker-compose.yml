@@ -1,0 +1,30 @@
+# Production-like stack: Postgres + the LeadFlow app (API + dashboard on :8000).
+#   docker compose up --build
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: leadflow
+      POSTGRES_PASSWORD: leadflow
+      POSTGRES_DB: leadflow
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U leadflow"]
+      interval: 5s
+      retries: 10
+
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      LEADFLOW_DATABASE_URL: postgresql+asyncpg://leadflow:leadflow@db:5432/leadflow
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      LEADFLOW_BUSINESS_TIMEZONE: ${LEADFLOW_BUSINESS_TIMEZONE:-UTC}
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

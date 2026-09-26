@@ -1,0 +1,10 @@
+node_modules/
+.venv/
+.dist/
+__pycache__/
+*.py[oc]
+dist/
+*.db
+*.db-journal
+.env
+.DS_Store
