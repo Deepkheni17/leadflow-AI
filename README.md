@@ -11,7 +11,7 @@ Website lead → AI agent → understand → check CRM → create lead → quali
 
 | Layer    | Stack |
 |----------|-------|
-| Agent    | **LangGraph** state machine (`agent ⇄ tools`) · **Claude** via `langchain-anthropic` · deterministic built-in policy when no API key |
+| Agent    | **LangGraph** state machine (`agent ⇄ tools`) · **Gemini** (`langchain-google-genai`) or **Claude** (`langchain-anthropic`) · deterministic built-in policy when no API key |
 | Tools    | `search_customer()` `create_lead()` `update_lead()` `check_calendar()` `book_meeting()` `send_email()` |
 | Backend  | FastAPI · SQLAlchemy 2 (async) · SQLite by default / Postgres in prod · Server-Sent Events streaming · structlog |
 | Frontend | React 19 · Vite · Tailwind v4 · Motion (scroll & layout animations) · custom SVG charts |
@@ -55,19 +55,24 @@ npm run lint
 
 ---
 
-## Turn on Claude
+## Turn on an LLM (Gemini or Claude)
 
 Without an API key the agent runs a **built-in deterministic policy**. It uses the same LangGraph
-graph, the same tools and the same audit log, so the whole product works offline. To let Claude
-drive:
+graph, the same tools and the same audit log, so the whole product works offline. To let an LLM
+drive, copy the env template and set one key:
 
 ```bash
 cp apps/api/.env.example apps/api/.env
-# then set ANTHROPIC_API_KEY=sk-ant-...   (model: LEADFLOW_ANTHROPIC_MODEL, default claude-opus-5)
 ```
 
-If a Claude call fails (network, rate limit), that step falls back to the built-in policy so the lead
-is never dropped. The dashboard sidebar shows which brain is active.
+| Provider | Key | Model setting (default) |
+|----------|-----|-------------------------|
+| Gemini | `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) | `LEADFLOW_GEMINI_MODEL` (`gemini-3.5-flash`) |
+| Claude | `ANTHROPIC_API_KEY` | `LEADFLOW_ANTHROPIC_MODEL` (`claude-opus-5`) |
+
+If both are set, Claude is used unless `LEADFLOW_LLM_PROVIDER=gemini`. Restart the API after editing
+`.env`. If an LLM call fails (network, quota, rate limit), that step falls back to the built-in policy
+so the lead is never dropped. The dashboard sidebar shows which brain and model are active.
 
 All settings are listed in [`apps/api/.env.example`](apps/api/.env.example): database, timezone, business
 hours, meeting length, qualification threshold, SMTP and more.

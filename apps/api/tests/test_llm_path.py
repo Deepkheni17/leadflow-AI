@@ -7,7 +7,7 @@ from leadflow.agent import graph
 from leadflow.agent.runner import create_conversation, run_turn_collect
 from leadflow.config import Settings
 
-pytestmark = pytest.mark.asyncio(loop_scope="session")
+aio = pytest.mark.asyncio(loop_scope="session")
 
 
 class ScriptedModel:
@@ -30,6 +30,7 @@ def _tc(name, args, i):
     return {"name": name, "args": args, "id": f"toolu_{i}", "type": "tool_call"}
 
 
+@aio
 async def test_llm_drives_tools(monkeypatch):
     model = ScriptedModel(
         [
@@ -79,6 +80,7 @@ async def test_llm_drives_tools(monkeypatch):
     assert model.calls[1][-1].type == "tool"
 
 
+@aio
 async def test_llm_failure_falls_back_to_builtin(monkeypatch):
     class Broken:
         def bind_tools(self, tools):
@@ -94,3 +96,50 @@ async def test_llm_failure_falls_back_to_builtin(monkeypatch):
     )
     assert r["error"] is None
     assert "work email" in r["reply"]
+
+
+def test_provider_selection():
+    assert Settings(anthropic_api_key="a", gemini_api_key="g").llm_brain == "claude"
+    assert Settings(anthropic_api_key="", gemini_api_key="g").llm_brain == "gemini"
+    assert (
+        Settings(anthropic_api_key="a", gemini_api_key="g", llm_provider="gemini").llm_brain
+        == "gemini"
+    )
+    assert Settings(anthropic_api_key="a", llm_provider="none").llm_brain is None
+    assert Settings(gemini_api_key="g").llm_model == Settings().gemini_model
+
+
+@aio
+async def test_gemini_is_wired_into_the_graph(monkeypatch):
+    seen = {}
+    model = ScriptedModel([AIMessage(content="Hi from Gemini! What's your work email?")])
+
+    def fake_llm(brain, api_key, *rest):
+        seen.update(brain=brain, key=api_key)
+        return model
+
+    monkeypatch.setattr(graph, "_llm", fake_llm)
+    settings = Settings(anthropic_api_key="", gemini_api_key="gem-key")
+    cid = await create_conversation()
+    r = await run_turn_collect(cid, "Hello", settings=settings, use_llm=True)
+    assert seen == {"brain": "gemini", "key": "gem-key"}
+    assert r["reply"] == "Hi from Gemini! What's your work email?"
+
+
+def test_gemini_model_accepts_our_tool_schemas():
+    """Binding converts every tool schema to Gemini's format (no network call)."""
+    from unittest.mock import MagicMock
+
+    from langchain_google_genai import ChatGoogleGenerativeAI
+
+    from leadflow.agent.context import RunContext
+
+    graph._llm.cache_clear()
+    llm = graph._llm("gemini", "fake-key", "gemini-3.5-flash", 1024, "")
+    assert isinstance(llm, ChatGoogleGenerativeAI)
+    ctx = RunContext(session=MagicMock(), settings=Settings(), conversation=MagicMock())
+    try:
+        bound = llm.bind_tools(graph.build_tools(ctx))
+        assert bound.kwargs["tools"]
+    finally:
+        graph._llm.cache_clear()

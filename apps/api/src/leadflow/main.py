@@ -38,8 +38,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await seed_if_empty()
     log.info(
         "leadflow.ready",
-        agent_brain="claude" if settings.llm_enabled else "built-in",
-        model=settings.anthropic_model if settings.llm_enabled else None,
+        agent_brain=settings.llm_brain or "built-in",
+        model=settings.llm_model,
         dashboard=settings.web_dist.exists(),
     )
     yield

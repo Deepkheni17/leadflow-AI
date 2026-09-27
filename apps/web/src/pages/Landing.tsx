@@ -361,8 +361,8 @@ function Scoring() {
 }
 
 const STACK = [
-  { icon: GitBranch, title: "LangGraph state machine", body: "agent ⇄ tools loop with an audited executor. Same graph whether Claude or the built-in policy is driving.", span: "lg:col-span-2" },
-  { icon: BrainCircuit, title: "Claude-powered", body: "Add an Anthropic key and Claude drives. No key? A deterministic policy runs the same tools offline." },
+  { icon: GitBranch, title: "LangGraph state machine", body: "agent ⇄ tools loop with an audited executor. Same graph whether Claude, Gemini or the built-in policy is driving.", span: "lg:col-span-2" },
+  { icon: BrainCircuit, title: "Claude or Gemini", body: "Add an Anthropic or Gemini key and the LLM drives. No key? A deterministic policy runs the same tools offline." },
   { icon: Radio, title: "Streams live", body: "Server-Sent Events push every tool call and reply to the chat as it happens." },
   { icon: ScrollText, title: "Full audit log", body: "Every action is stored with inputs, outputs, status and latency — reviewable in the dashboard.", span: "lg:col-span-2" },
   { icon: Database, title: "Postgres-ready", body: "SQLite out of the box; point one env var at Postgres for production." },

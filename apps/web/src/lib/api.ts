@@ -148,13 +148,13 @@ export interface Dashboard {
   hot_leads: Lead[];
   upcoming: Appointment[];
   recent_actions: AgentAction[];
-  agent_brain: "claude" | "built-in";
+  agent_brain: "claude" | "gemini" | "built-in";
   qualified_score: number;
 }
 
 export interface Health {
   status: string;
-  agent_brain: "claude" | "built-in";
+  agent_brain: "claude" | "gemini" | "built-in";
   model: string | null;
   database: string;
   timezone: string;

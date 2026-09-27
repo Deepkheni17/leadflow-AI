@@ -2,9 +2,9 @@
 
     START -> agent --(tool calls?)--> tools -> agent -> ... -> END
 
-The `agent` node is Claude (via langchain-anthropic) when an API key is configured, otherwise
-the deterministic BuiltinPolicy. Both emit standard AIMessages with tool calls, so the rest of
-the graph is identical.
+The `agent` node is an LLM when an API key is configured — Claude (langchain-anthropic) or
+Gemini (langchain-google-genai) — otherwise the deterministic BuiltinPolicy. All of them emit
+standard AIMessages with tool calls, so the rest of the graph is identical.
 """
 
 import json
@@ -46,7 +46,17 @@ def _text(message: AIMessage) -> str:
 
 
 @lru_cache(maxsize=4)
-def _llm(api_key: str, base_url: str, model: str, max_tokens: int):
+def _llm(brain: str, api_key: str, model: str, max_tokens: int, base_url: str):
+    if brain == "gemini":
+        from langchain_google_genai import ChatGoogleGenerativeAI
+
+        return ChatGoogleGenerativeAI(
+            model=model,
+            google_api_key=api_key,
+            max_output_tokens=max_tokens,
+            max_retries=2,
+            timeout=120,
+        )
     from langchain_anthropic import ChatAnthropic
 
     return ChatAnthropic(
@@ -63,7 +73,8 @@ async def agent_node(state: AgentState, config: RunnableConfig) -> dict[str, Any
     ctx = _ctx(config)
     response: AIMessage | None = None
 
-    if ctx.use_llm and ctx.settings.anthropic_api_key:
+    brain = ctx.settings.llm_brain
+    if ctx.use_llm and brain:
         lead = await ctx.lead()
         context = {
             "conversation_id": ctx.conversation.id,
@@ -72,14 +83,15 @@ async def agent_node(state: AgentState, config: RunnableConfig) -> dict[str, Any
             "qualified_score_threshold": ctx.settings.qualified_score,
         }
         s = ctx.settings
-        llm = _llm(s.anthropic_api_key, s.anthropic_base_url, s.anthropic_model, s.llm_max_tokens)
+        key = s.anthropic_api_key if brain == "claude" else s.gemini_api_key
+        llm = _llm(brain, key, s.llm_model, s.llm_max_tokens, s.anthropic_base_url)
         model = llm.bind_tools(build_tools(ctx))
         try:
             response = await model.ainvoke(
                 [SystemMessage(build_system_prompt(s, context)), *state["messages"]]
             )
         except Exception as exc:  # network/auth/rate-limit: keep the lead moving
-            log.warning("agent.llm_failed_falling_back", error=str(exc)[:300])
+            log.warning("agent.llm_failed_falling_back", brain=brain, error=str(exc)[:300])
             await ctx.emit("notice", {"message": "LLM unavailable — using built-in policy."})
 
     if response is None:

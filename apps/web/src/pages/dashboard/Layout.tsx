@@ -95,13 +95,13 @@ export default function DashboardLayout() {
             <div className="mt-2 flex items-center gap-2">
               <span className="size-2 animate-pulse-dot rounded-full bg-amber" />
               <span className="text-sm font-medium">
-                {brain === "claude" ? "Claude" : brain === "built-in" ? "Built-in policy" : "…"}
+                {brain === "claude" ? "Claude" : brain === "gemini" ? "Gemini" : brain === "built-in" ? "Built-in policy" : "…"}
               </span>
             </div>
             <p className="mt-1 text-xs leading-relaxed text-faint">
-              {brain === "claude"
+              {brain === "claude" || brain === "gemini"
                 ? health.data?.model
-                : "Deterministic offline mode. Set ANTHROPIC_API_KEY to let Claude drive."}
+                : "Deterministic offline mode. Add a Gemini or Anthropic key to let an LLM drive."}
             </p>
           </div>
           <SimulateButton onDone={showToast} />

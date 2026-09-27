@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -34,13 +35,22 @@ class Settings(BaseSettings):
     seed_demo_data: bool = True
 
     # --- LLM ---
-    # Without a key the agent runs on a deterministic built-in policy (same tools, same graph).
+    # "auto" picks Claude if an Anthropic key is set, else Gemini if a Google key is set.
+    # Without any key the agent runs on a deterministic built-in policy (same tools, same graph).
+    llm_provider: Literal["auto", "anthropic", "gemini", "none"] = "auto"
     anthropic_api_key: str | None = Field(
         default=None,
         validation_alias=AliasChoices("LEADFLOW_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY"),
     )
     anthropic_base_url: str = "https://api.anthropic.com"
     anthropic_model: str = "claude-opus-5"
+    gemini_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "LEADFLOW_GEMINI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY"
+        ),
+    )
+    gemini_model: str = "gemini-3.5-flash"
     llm_max_tokens: int = 16000
 
     # --- business rules ---
@@ -61,8 +71,24 @@ class Settings(BaseSettings):
     smtp_starttls: bool = True
 
     @property
+    def llm_brain(self) -> Literal["claude", "gemini"] | None:
+        """Which LLM drives the agent, or None for the built-in policy."""
+        wants = self.llm_provider
+        if wants in ("auto", "anthropic") and self.anthropic_api_key:
+            return "claude"
+        if wants in ("auto", "gemini") and self.gemini_api_key:
+            return "gemini"
+        return None
+
+    @property
     def llm_enabled(self) -> bool:
-        return bool(self.anthropic_api_key)
+        return self.llm_brain is not None
+
+    @property
+    def llm_model(self) -> str | None:
+        return {"claude": self.anthropic_model, "gemini": self.gemini_model}.get(
+            self.llm_brain or ""
+        )
 
 
 @lru_cache

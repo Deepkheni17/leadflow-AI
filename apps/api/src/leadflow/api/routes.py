@@ -139,8 +139,8 @@ async def health(session: Session) -> dict[str, Any]:
     await session.execute(select(1))
     return {
         "status": "ok",
-        "agent_brain": "claude" if settings.llm_enabled else "built-in",
-        "model": settings.anthropic_model if settings.llm_enabled else None,
+        "agent_brain": settings.llm_brain or "built-in",
+        "model": settings.llm_model,
         "database": settings.database_url.split(":", 1)[0],
         "timezone": settings.business_timezone,
         "company": settings.company_name,
@@ -459,7 +459,7 @@ async def dashboard(session: Session, days: int = Query(14, ge=7, le=90)) -> dic
         "recent_actions": [
             a.model_dump(mode="json") for a in await _actions_out(session, list(recent_actions))
         ],
-        "agent_brain": "claude" if settings.llm_enabled else "built-in",
+        "agent_brain": settings.llm_brain or "built-in",
         "qualified_score": settings.qualified_score,
     }
 
