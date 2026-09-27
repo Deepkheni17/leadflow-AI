@@ -51,6 +51,10 @@ class Settings(BaseSettings):
         ),
     )
     gemini_model: str = "gemini-3.5-flash"
+    # Tried once when the main model is overloaded or rate-limited ("" disables).
+    gemini_fallback_model: str = "gemini-flash-latest"
+    # minimal | low | medium | high — low keeps multi-step tool use fast.
+    gemini_thinking_level: str = "low"
     llm_max_tokens: int = 16000
 
     # --- business rules ---

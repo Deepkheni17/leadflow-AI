@@ -8,6 +8,7 @@ standard AIMessages with tool calls, so the rest of the graph is identical.
 """
 
 import json
+import re
 import time
 from functools import lru_cache
 from typing import Annotated, Any, TypedDict
@@ -45,8 +46,32 @@ def _text(message: AIMessage) -> str:
     )
 
 
+# While a provider is rate-limited or overloaded, skip it until this monotonic time
+# (process-wide), so every step doesn't pay for a failing call.
+_cooldown_until = 0.0
+
+
+def _rate_limit_delay(exc: Exception) -> float | None:
+    """Seconds to back off if `exc` is a rate-limit or overload error, else None."""
+    text = str(exc)
+    if re.search(r"\b(503|529)\b|UNAVAILABLE|overloaded|high demand", text, re.IGNORECASE):
+        return 15.0
+    if not re.search(r"\b429\b|RESOURCE_EXHAUSTED|rate.?limit", text, re.IGNORECASE):
+        return None
+    m = re.search(r"retry in ([0-9.]+)s|'retryDelay': '([0-9.]+)s'", text)
+    delay = float(next(g for g in m.groups() if g)) if m else 30.0
+    return min(max(delay, 5.0), 120.0)
+
+
 @lru_cache(maxsize=4)
-def _llm(brain: str, api_key: str, model: str, max_tokens: int, base_url: str):
+def _llm(
+    brain: str,
+    api_key: str,
+    model: str,
+    max_tokens: int,
+    base_url: str,
+    thinking_level: str = "low",
+):
     if brain == "gemini":
         from langchain_google_genai import ChatGoogleGenerativeAI
 
@@ -54,7 +79,8 @@ def _llm(brain: str, api_key: str, model: str, max_tokens: int, base_url: str):
             model=model,
             google_api_key=api_key,
             max_output_tokens=max_tokens,
-            max_retries=2,
+            thinking_config={"thinking_level": thinking_level.upper()},
+            max_retries=1,
             timeout=120,
         )
     from langchain_anthropic import ChatAnthropic
@@ -73,8 +99,14 @@ async def agent_node(state: AgentState, config: RunnableConfig) -> dict[str, Any
     ctx = _ctx(config)
     response: AIMessage | None = None
 
+    global _cooldown_until
     brain = ctx.settings.llm_brain
-    if ctx.use_llm and brain:
+    if ctx.use_llm and brain and not ctx.llm_down and time.monotonic() < _cooldown_until:
+        ctx.llm_down = True
+        await ctx.emit(
+            "notice", {"message": f"{brain.title()} is rate-limited — using built-in policy."}
+        )
+    if ctx.use_llm and brain and not ctx.llm_down:
         lead = await ctx.lead()
         context = {
             "conversation_id": ctx.conversation.id,
@@ -84,15 +116,36 @@ async def agent_node(state: AgentState, config: RunnableConfig) -> dict[str, Any
         }
         s = ctx.settings
         key = s.anthropic_api_key if brain == "claude" else s.gemini_api_key
-        llm = _llm(brain, key, s.llm_model, s.llm_max_tokens, s.anthropic_base_url)
-        model = llm.bind_tools(build_tools(ctx))
-        try:
-            response = await model.ainvoke(
-                [SystemMessage(build_system_prompt(s, context)), *state["messages"]]
-            )
-        except Exception as exc:  # network/auth/rate-limit: keep the lead moving
-            log.warning("agent.llm_failed_falling_back", brain=brain, error=str(exc)[:300])
-            await ctx.emit("notice", {"message": "LLM unavailable — using built-in policy."})
+        # Gemini: if the main model is overloaded/rate-limited, try the fallback model once.
+        models = [s.llm_model]
+        if brain == "gemini" and s.gemini_fallback_model not in ("", s.llm_model):
+            models.append(s.gemini_fallback_model)
+        messages = [SystemMessage(build_system_prompt(s, context)), *state["messages"]]
+        tools = build_tools(ctx)
+        for i, model_name in enumerate(models):
+            llm = _llm(
+                brain, key, model_name, s.llm_max_tokens, s.anthropic_base_url,
+                s.gemini_thinking_level,
+            )  # fmt: skip
+            try:
+                response = await llm.bind_tools(tools).ainvoke(messages)
+                break
+            except Exception as exc:  # network/auth/rate-limit: keep the lead moving
+                delay = _rate_limit_delay(exc)
+                log.warning(
+                    "agent.llm_failed", brain=brain, model=model_name, cooldown_s=delay,
+                    error=str(exc)[:200],
+                )  # fmt: skip
+                if delay is not None and i + 1 < len(models):
+                    continue  # transient: try the fallback model
+                # Finish this turn on the built-in policy instead of retrying every step.
+                ctx.llm_down = True
+                if delay is not None:
+                    _cooldown_until = time.monotonic() + delay
+                await ctx.emit(
+                    "notice", {"message": f"{brain.title()} unavailable — using built-in policy."}
+                )
+                break
 
     if response is None:
         response = await BuiltinPolicy().decide(ctx, state["messages"])

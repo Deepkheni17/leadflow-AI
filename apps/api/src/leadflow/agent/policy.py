@@ -95,9 +95,13 @@ def _need_phrase(text: str | None) -> str | None:
     sentence = re.split(r"(?<=[.!?])\s", text.strip())[0].rstrip(".!?")
     sentence = re.sub(r"^(hi|hello|hey)( there| team)?[,!.\s]+", "", sentence, flags=re.IGNORECASE)
     m = _INTENT.match(sentence)
-    if not m:
+    if m:
+        phrase = sentence[m.end() :]
+    elif re.match(r"^(an?|the|some)\s", sentence, re.IGNORECASE):
+        # Already a noun phrase, e.g. an LLM-written "An AI agent that qualifies…".
+        phrase = sentence[:1].lower() + sentence[1:]
+    else:
         return None
-    phrase = sentence[m.end() :]
     if len(phrase) > 110:
         phrase = phrase[:107].rsplit(" ", 1)[0] + "…"
     return phrase or None
@@ -523,8 +527,12 @@ class BuiltinPolicy:
             f"Your discovery call with {ctx.settings.company_name} is confirmed.\n\n"
             f"When: {booking['label']} ({ctx.settings.meeting_minutes} minutes)\n"
             f"Where: {booking['meeting_url']}\n\n"
-            f"We'll walk through {_need_summary(lead.requirement)}, your current workflow, and "
-            "what a first version could look like — including timeline and investment.\n\n"
+            + (
+                f"We'll walk through {phrase}, your current workflow, and what a first "
+                if (phrase := _need_phrase(lead.requirement))
+                else "We'll walk through your goals, your current workflow, and what a first "
+            )
+            + "version could look like — including timeline and investment.\n\n"
             "Need to reschedule? Just reply to this email.\n\n"
             f"— The {ctx.settings.company_name} team"
         )

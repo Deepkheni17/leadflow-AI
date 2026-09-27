@@ -143,3 +143,73 @@ def test_gemini_model_accepts_our_tool_schemas():
         assert bound.kwargs["tools"]
     finally:
         graph._llm.cache_clear()
+
+
+@aio
+async def test_rate_limit_pauses_llm(monkeypatch):
+    calls = {"n": 0}
+
+    class RateLimited:
+        def bind_tools(self, tools):
+            return self
+
+        async def ainvoke(self, messages):
+            calls["n"] += 1
+            raise RuntimeError("429 RESOURCE_EXHAUSTED. Please retry in 20.5s.")
+
+    monkeypatch.setattr(graph, "_llm", lambda *a, **k: RateLimited())
+    monkeypatch.setattr(graph, "_cooldown_until", 0.0)
+    settings = Settings(anthropic_api_key="", gemini_api_key="k")
+
+    cid = await create_conversation()
+    r = await run_turn_collect(
+        cid, "Hi, I'm Ana (ana@example.com)", settings=settings, use_llm=True
+    )
+    assert calls["n"] == 2  # main model + fallback model, then built-in for the rest
+    assert r["error"] is None and r["lead"]["email"] == "ana@example.com"
+    assert graph._cooldown_until > 0
+
+    await run_turn_collect(cid, "We're 12 people", settings=settings, use_llm=True)
+    assert calls["n"] == 2  # still cooling down: no new LLM call
+
+
+@aio
+async def test_gemini_fallback_model_used_when_main_overloaded(monkeypatch):
+    used = []
+
+    class Model:
+        def __init__(self, name):
+            self.name = name
+
+        def bind_tools(self, tools):
+            return self
+
+        async def ainvoke(self, messages):
+            used.append(self.name)
+            if self.name == "main-model":
+                raise RuntimeError("503 UNAVAILABLE: high demand")
+            return AIMessage(content=f"answered by {self.name}")
+
+    monkeypatch.setattr(graph, "_llm", lambda brain, key, model, *rest: Model(model))
+    monkeypatch.setattr(graph, "_cooldown_until", 0.0)
+    settings = Settings(
+        anthropic_api_key="", gemini_api_key="k",
+        gemini_model="main-model", gemini_fallback_model="backup-model",
+    )  # fmt: skip
+    r = await run_turn_collect(
+        await create_conversation(), "Hello", settings=settings, use_llm=True
+    )
+    assert used == ["main-model", "backup-model"]
+    assert r["reply"] == "answered by backup-model"
+    assert graph._cooldown_until == 0.0  # fallback succeeded, no pause
+
+
+def test_rate_limit_delay_parsing():
+    assert graph._rate_limit_delay(RuntimeError("429 ... retry in 20.5s")) == 20.5
+    assert graph._rate_limit_delay(RuntimeError("RESOURCE_EXHAUSTED")) == 30.0
+    assert graph._rate_limit_delay(RuntimeError("401 bad key")) is None
+
+
+def test_overload_backs_off_briefly():
+    err = RuntimeError("503 UNAVAILABLE. This model is currently experiencing high demand.")
+    assert graph._rate_limit_delay(err) == 15.0

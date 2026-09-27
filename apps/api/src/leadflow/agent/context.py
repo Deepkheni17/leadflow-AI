@@ -23,6 +23,8 @@ class RunContext:
     conversation: Conversation
     emit: Emit = _noop_emit
     use_llm: bool = False
+    # Set when the LLM failed during this run; the rest of the turn uses the built-in policy.
+    llm_down: bool = False
 
     async def lead(self) -> Lead | None:
         if not self.conversation.lead_id:
